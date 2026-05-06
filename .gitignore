@@ -1,0 +1,6 @@
+# Credenciais e configurações locais
+.env
+.envjhoni
+database/* copy.sql
+database/*.log
+!.env.example
