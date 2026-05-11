@@ -84,8 +84,72 @@ function openItemModal(card) {
     dateInput.max   = d.deadline;
     dateInput.value = d.plannedDate;
 
+    // Gerenciar visualização de PDF
+    const pdfViewer = document.getElementById('pdf-viewer');
+    const pdfUploadLabel = document.getElementById('pdf-upload-label');
+    const pdfLink = document.getElementById('pdf-link');
+    const replaceCheckbox = document.getElementById('replace-pdf');
+    const pdfFileInput = document.getElementById('pdf-file-main');
+    const pdfFileInputReplace = document.getElementById('pdf-file-input');
+
+    const itemPdfPath = (card.getAttribute('data-arquivo-pdf') || '').trim();
+    const auditPdfPath = (card.getAttribute('data-audit-pdf') || '').trim();
+    const pdfPath = itemPdfPath || auditPdfPath;
+
+    if (pdfPath !== '') {
+        // Tem PDF: mostrar visualizador
+        pdfViewer.style.display = 'block';
+        pdfUploadLabel.style.display = 'none';
+        pdfLink.href = pdfPath;
+        replaceCheckbox.checked = false;
+        pdfFileInputReplace.style.display = 'none';
+        pdfFileInputReplace.required = false;
+        pdfFileInputReplace.value = '';
+    } else {
+        // Sem PDF: mostrar upload normal
+        pdfViewer.style.display = 'none';
+        pdfUploadLabel.style.display = 'block';
+        pdfFileInput.value = '';
+    }
+
     openModal('modal-item');
 }
+
+// Event listener para checkbox de substituição de PDF
+document.addEventListener('DOMContentLoaded', () => {
+    const replaceCheckbox = document.getElementById('replace-pdf');
+    const pdfFileInputReplace = document.getElementById('pdf-file-input');
+    const pdfFileMain = document.getElementById('pdf-file-main');
+
+    if (replaceCheckbox) {
+        replaceCheckbox.addEventListener('change', () => {
+            if (replaceCheckbox.checked) {
+                pdfFileInputReplace.style.display = 'block';
+                pdfFileInputReplace.required = true;
+            } else {
+                pdfFileInputReplace.style.display = 'none';
+                pdfFileInputReplace.required = false;
+                pdfFileInputReplace.value = '';
+            }
+        });
+    }
+
+    // Certificar que o formulário envia o arquivo correto
+    const formItemEdit = document.getElementById('form-item-edit');
+    if (formItemEdit) {
+        formItemEdit.addEventListener('submit', (e) => {
+            // Se tem PDF novo para substituição, copiar para o main
+            if (pdfFileInputReplace.value) {
+                const dt = new DataTransfer();
+                const files = pdfFileInputReplace.files;
+                if (files.length > 0) {
+                    dt.items.add(files[0]);
+                    pdfFileMain.files = dt.files;
+                }
+            }
+        });
+    }
+});
 
 // Delete button inside item modal
 document.addEventListener('DOMContentLoaded', () => {

@@ -37,6 +37,58 @@ function auditById(PDO $pdo, int $auditId): ?array
     return $audit ?: null;
 }
 
+function saveItemPdf(int $auditId, int $itemId): ?string
+{
+    if (!isset($_FILES['arquivo_pdf']) || $_FILES['arquivo_pdf']['error'] === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+
+    if ($_FILES['arquivo_pdf']['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Erro ao fazer upload do arquivo: ' . $_FILES['arquivo_pdf']['error']);
+    }
+
+    $file = $_FILES['arquivo_pdf'];
+    $tmpName = (string) $file['tmp_name'];
+    $originalName = (string) $file['name'];
+
+    // Validar tipo de arquivo
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $tmpName);
+    finfo_close($finfo);
+
+    if ($mimeType !== 'application/pdf') {
+        throw new RuntimeException('Apenas arquivos PDF são permitidos.');
+    }
+
+    // Criar diretório se não existir
+    $publicDir = __DIR__ . '/public';
+    if (!is_dir($publicDir)) {
+        mkdir($publicDir, 0755, true);
+    }
+
+    // Gerar nome único para o arquivo
+    $filename = sprintf('audit_%s_item_%s_%s.pdf', $auditId, $itemId, time());
+    $filepath = $publicDir . '/' . $filename;
+
+    if (!move_uploaded_file($tmpName, $filepath)) {
+        throw new RuntimeException('Falha ao salvar o arquivo PDF.');
+    }
+
+    return 'public/' . $filename;
+}
+
+function deleteItemPdf(?string $filepath): void
+{
+    if (!$filepath) {
+        return;
+    }
+
+    $fullPath = __DIR__ . '/' . $filepath;
+    if (is_file($fullPath)) {
+        unlink($fullPath);
+    }
+}
+
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
@@ -44,6 +96,20 @@ try {
         if ($action === 'delete_audit') {
             requireCsrf($csrf);
             $auditId = (int) ($_POST['audit_id'] ?? 0);
+            
+            // Obter dados da auditoria antes de deletar
+            $getAudit = $pdo->prepare('SELECT arquivo_pdf FROM audits WHERE id = :id');
+            $getAudit->execute(['id' => $auditId]);
+            $audit = $getAudit->fetch();
+            
+            // Deletar arquivo PDF do disco se existir
+            if ($audit && $audit['arquivo_pdf']) {
+                $filePath = __DIR__ . '/' . $audit['arquivo_pdf'];
+                if (is_file($filePath)) {
+                    unlink($filePath);
+                }
+            }
+            
             $del = $pdo->prepare('DELETE FROM audits WHERE id = :id');
             $del->execute(['id' => $auditId]);
             redirect('?');
@@ -232,9 +298,28 @@ try {
             $allowedStatuses = ['nao_iniciado', 'em_andamento', 'em_revisao', 'concluido', 'bloqueado'];
             $updateStatus = in_array($status, $allowedStatuses, true);
 
+            // Processar upload de PDF
+            $novaPdf = null;
+            if (isset($_FILES['arquivo_pdf']) && $_FILES['arquivo_pdf']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $novaPdf = saveItemPdf($auditId, $itemId);
+            }
+
+            // Se houver novo PDF, obter PDF anterior para deletar
+            if ($novaPdf !== null) {
+                $getItem = $pdo->prepare('SELECT arquivo_pdf FROM audit_items WHERE id = :id AND auditoria_id = :auditoria_id');
+                $getItem->execute(['id' => $itemId, 'auditoria_id' => $auditId]);
+                $oldItem = $getItem->fetch();
+                if ($oldItem && $oldItem['arquivo_pdf']) {
+                    deleteItemPdf($oldItem['arquivo_pdf']);
+                }
+            }
+
             $sql = 'UPDATE audit_items SET responsavel = :responsavel, data_prevista = :data_prevista, data_limite_auditoria = :data_limite_auditoria, prioridade = :prioridade, observacao = :observacao';
             if ($updateStatus) {
                 $sql .= ', status = :status, concluido_em = :concluido_em';
+            }
+            if ($novaPdf !== null) {
+                $sql .= ', arquivo_pdf = :arquivo_pdf';
             }
             $sql .= ' WHERE id = :id AND auditoria_id = :auditoria_id';
 
@@ -250,6 +335,9 @@ try {
             if ($updateStatus) {
                 $params['status']       = $status;
                 $params['concluido_em'] = ($status === 'concluido' ? date('Y-m-d H:i:s') : null);
+            }
+            if ($novaPdf !== null) {
+                $params['arquivo_pdf'] = $novaPdf;
             }
 
             $update = $pdo->prepare($sql);
@@ -294,6 +382,16 @@ try {
 
             $auditId = (int) ($_POST['audit_id'] ?? 0);
             $itemId = (int) ($_POST['item_id'] ?? 0);
+
+            // Obter dados do item antes de deletar
+            $getItem = $pdo->prepare('SELECT arquivo_pdf FROM audit_items WHERE id = :id AND auditoria_id = :auditoria_id');
+            $getItem->execute(['id' => $itemId, 'auditoria_id' => $auditId]);
+            $item = $getItem->fetch();
+
+            // Deletar arquivo PDF do disco se existir
+            if ($item && $item['arquivo_pdf']) {
+                deleteItemPdf($item['arquivo_pdf']);
+            }
 
             $stmt = $pdo->prepare('DELETE FROM audit_items WHERE id = :id AND auditoria_id = :auditoria_id');
             $stmt->execute(['id' => $itemId, 'auditoria_id' => $auditId]);
@@ -547,11 +645,19 @@ $autoOpenAuditId = isset($_GET['audit_id']) ? (int) $_GET['audit_id'] : 0;
                         data-priority="<?= h($item['prioridade']) ?>"
                         data-status="<?= h($item['status']) ?>"
                         data-notes="<?= h((string) ($item['observacao'] ?? '')) ?>"
+                        data-arquivo-pdf="<?= h((string) ($item['arquivo_pdf'] ?? '')) ?>"
+                        data-audit-pdf="<?= h((string) ($audit['arquivo_pdf'] ?? '')) ?>"
                         data-deadline="<?= h($audit['data_limite']) ?>"
                         onclick="openItemModal(this)">
                         <div class="card-top">
                             <span class="card-title"><?= h($item['titulo']) ?></span>
-                            <span class="priority p-<?= h($item['prioridade']) ?>"><?= strtoupper(h($item['prioridade'])) ?></span>
+                            <div style="display:flex;gap:4px;align-items:center">
+                                <?php $pdfPath = (string) ($item['arquivo_pdf'] ?? $audit['arquivo_pdf'] ?? ''); ?>
+                                <?php if ($pdfPath !== ''): ?>
+                                    <a href="<?= h($pdfPath) ?>" target="_blank" title="Ver PDF" style="text-decoration:none;color:#d97706;font-size:16px;padding:2px 4px" onclick="event.stopPropagation()">📄</a>
+                                <?php endif; ?>
+                                <span class="priority p-<?= h($item['prioridade']) ?>"><?= strtoupper(h($item['prioridade'])) ?></span>
+                            </div>
                         </div>
                         <?php if (!empty($item['categoria'])): ?>
                             <small class="tag"><?= h($item['categoria']) ?></small>
@@ -629,7 +735,7 @@ $autoOpenAuditId = isset($_GET['audit_id']) ? (int) $_GET['audit_id'] : 0;
             <h2 id="modal-item-title" class="item-title-heading">Item</h2>
             <button class="btn-close" onclick="closeModal('modal-item')" aria-label="Fechar">&times;</button>
         </div>
-        <form method="post" class="form-grid" id="form-item-edit">
+        <form method="post" class="form-grid" id="form-item-edit" enctype="multipart/form-data">
             <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
             <input type="hidden" name="action" value="update_item_meta">
             <input type="hidden" name="audit_id" id="edit-audit-id">
@@ -657,6 +763,21 @@ $autoOpenAuditId = isset($_GET['audit_id']) ? (int) $_GET['audit_id'] : 0;
             </label>
             <label class="span2">Observação
                 <textarea name="notes" id="edit-notes" rows="3" placeholder="Opcional"></textarea>
+            </label>
+            <div id="pdf-viewer" class="span2 pdf-viewer" style="display:none">
+                <div class="pdf-viewer-head">
+                    <strong>PDF atual</strong>
+                    <a id="pdf-link" href="#" target="_blank" class="btn-secondary btn-sm pdf-view-button" onclick="event.preventDefault();window.open(this.href, '_blank')">Visualizar PDF</a>
+                </div>
+                <label class="pdf-replace-toggle">
+                    <input type="checkbox" id="replace-pdf" name="replace-pdf">
+                    <span>Substituir PDF existente?</span>
+                </label>
+                <input type="file" name="arquivo_pdf" accept="application/pdf" id="pdf-file-input" style="display:none;margin-top:8px">
+            </div>
+            <label class="span2" id="pdf-upload-label">Arquivo PDF (opcional)
+                <input type="file" name="arquivo_pdf" accept="application/pdf" id="pdf-file-main">
+                <small>Apenas PDFs. Deixe em branco para manter o arquivo atual.</small>
             </label>
             <div class="form-footer span2">
                 <button type="button" class="btn-danger-outline" id="btn-delete-item">Excluir item</button>

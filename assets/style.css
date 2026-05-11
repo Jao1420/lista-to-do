@@ -371,6 +371,39 @@ button:hover { filter: brightness(1.05); }
     padding-top: 4px;
 }
 
+.pdf-viewer {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #f3f4f6;
+    border: 1px solid #e1e7f0;
+    border-radius: var(--radius-sm);
+}
+
+.pdf-viewer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: var(--muted);
+}
+
+.pdf-view-button {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pdf-replace-toggle {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
 label {
     display: flex;
     flex-direction: column;

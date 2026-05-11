@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS audits (
     cliente VARCHAR(120) NOT NULL,
     responsavel VARCHAR(120) NOT NULL,
     data_limite DATE NOT NULL,
+    arquivo_pdf VARCHAR(255) NULL,
     criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_audits_deadline (data_limite)
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS audit_items (
     prioridade ENUM('baixa', 'media', 'alta') NOT NULL DEFAULT 'media',
     ordem_card INT NOT NULL DEFAULT 0,
     observacao TEXT NULL,
+    arquivo_pdf VARCHAR(255) NULL,
     concluido_em DATETIME NULL,
     criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

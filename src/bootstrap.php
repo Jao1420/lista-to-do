@@ -90,6 +90,18 @@ function ensureSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE audits ADD COLUMN finalizado TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // Migration: add arquivo_pdf column if not present
+    $col = $pdo->query("SHOW COLUMNS FROM audits LIKE 'arquivo_pdf'");
+    if ($col === false || !$col->fetch()) {
+        $pdo->exec("ALTER TABLE audits ADD COLUMN arquivo_pdf VARCHAR(255) NULL");
+    }
+
+    // Migration: add arquivo_pdf column to audit_items if not present
+    $col = $pdo->query("SHOW COLUMNS FROM audit_items LIKE 'arquivo_pdf'");
+    if ($col === false || !$col->fetch()) {
+        $pdo->exec("ALTER TABLE audit_items ADD COLUMN arquivo_pdf VARCHAR(255) NULL");
+    }
+
     $loaded = true;
 }
 
